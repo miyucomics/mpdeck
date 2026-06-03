@@ -8,7 +8,7 @@ use crate::{
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::Widget,
 };
@@ -110,13 +110,19 @@ fn render_labels(buf: &mut Buffer, x: u16, y: u16, title: &str, artist: &str) {
             Span::styled(title, Color::Magenta),
             Span::styled(" ★ ", Color::Yellow),
         ])
-        .style(Style::default().bg(Color::Black).bold()),
+        .style(Style::default().bold()),
         x,
         y,
         2,
     );
 
-    render_centered_text(buf, Line::from(artist).style(Color::DarkGray), x, y, 3);
+    render_centered_text(
+        buf,
+        Line::from(artist).style(Style::new().red().italic()),
+        x,
+        y,
+        3,
+    );
 }
 
 fn render_spokes(buf: &mut Buffer, x: u16, y: u16, frame_number: usize) {
@@ -146,7 +152,7 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
     );
 
     let text = match mode {
-        StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green)),
+        StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green).bold()),
         StatusLineMode::Nothing => Line::from(Span::styled("● READY", Color::Green)),
         StatusLineMode::ShowVolume => {
             let bar = render_progress_bar(data.volume, 100, 10);
@@ -157,25 +163,28 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
 
     render_centered_text(buf, text.style(Style::new().bold()), x, y, 9);
 
-    let mut statuses = vec![];
-    if data.repeat {
-        statuses.push("REPEAT");
-    }
-    if data.random {
-        statuses.push("RANDOM");
-    }
-    if data.consume {
-        statuses.push("CONSUME");
-    }
-    if data.single {
-        statuses.push("SINGLE");
+    let mut status_string = String::new();
+
+    let flags = [
+        (data.repeat, "REPEAT"),
+        (data.random, "RANDOM"),
+        (data.consume, "CONSUME"),
+        (data.single, "SINGLE"),
+    ];
+
+    for (flag, label) in flags {
+        if flag {
+            if !status_string.is_empty() {
+                status_string.push_str(" | ");
+            }
+            status_string.push_str(label);
+        }
     }
 
-    render_centered_text(
-        buf,
-        Line::from(statuses.join(" | ")).style(Color::DarkGray),
-        x,
-        y,
-        10,
-    );
+    if status_string.is_empty() {
+        status_string.push_str("CLEAR");
+    }
+
+    let status_text = Line::from(status_string).style(Color::Green);
+    render_centered_text(buf, status_text, x, y, 10);
 }

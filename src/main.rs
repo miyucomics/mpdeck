@@ -43,21 +43,22 @@ impl App {
             let mut client = Client::connect("127.0.0.1:6600").unwrap();
 
             loop {
-                while let Ok(command) = command_rx.try_recv() {
-                    match command {
-                        MpdCommand::TogglePause => {
-                            let _ = client.toggle_pause();
-                        }
-                        MpdCommand::PreviousTrack => {
-                            let _ = client.prev();
-                        }
-                        MpdCommand::NextTrack => {
-                            let _ = client.next();
-                        }
+                if let Ok(status) = client.status() {
+                    while let Ok(command) = command_rx.try_recv() {
+                        let _ = match command {
+                            MpdCommand::TogglePause => client.toggle_pause(),
+                            MpdCommand::PreviousTrack => client.prev(),
+                            MpdCommand::NextTrack => client.next(),
+                            MpdCommand::ToggleRepeat => client.repeat(!status.repeat),
+                            MpdCommand::ToggleRandom => client.random(!status.random),
+                            MpdCommand::ToggleConsume => client.consume(!status.consume),
+                            MpdCommand::ToggleSingle => client.single(!status.single),
+                        };
                     }
                 }
 
                 let mut fresh_data = MpdData::new();
+
                 if let Ok(status) = client.status() {
                     fresh_data.playing = status.state == mpd::State::Play;
 
@@ -95,7 +96,7 @@ impl App {
         let app = Self {
             frame_number: 0,
             mpd_data: MpdData::new(),
-            tick_rate: Duration::from_millis(150),
+            tick_rate: Duration::from_millis(200),
             last_tick: Instant::now(),
             accumulated_time: Duration::from_secs(0),
             should_quit: false,
@@ -125,14 +126,30 @@ impl App {
     fn handle_event(&mut self, key: &KeyEvent) {
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char(' ') => {
+            KeyCode::Char(' ' | 'p') => {
                 let _ = self.command_tx.send(MpdCommand::TogglePause);
             }
             KeyCode::Char('j') => {
                 let _ = self.command_tx.send(MpdCommand::NextTrack);
+                self.mpd_data.title = "Loading...".to_string();
+                self.mpd_data.artist = "Loading...".to_string();
             }
             KeyCode::Char('k') => {
                 let _ = self.command_tx.send(MpdCommand::PreviousTrack);
+                self.mpd_data.artist = "Loading...".to_string();
+            }
+
+            KeyCode::Char('z') => {
+                let _ = self.command_tx.send(MpdCommand::ToggleRepeat);
+            }
+            KeyCode::Char('x') => {
+                let _ = self.command_tx.send(MpdCommand::ToggleRandom);
+            }
+            KeyCode::Char('c') => {
+                let _ = self.command_tx.send(MpdCommand::ToggleConsume);
+            }
+            KeyCode::Char('v') => {
+                let _ = self.command_tx.send(MpdCommand::ToggleSingle);
             }
             _ => {}
         }

@@ -42,4 +42,8 @@ pub enum MpdCommand {
     TogglePause,
     PreviousTrack,
     NextTrack,
+    ToggleRepeat,
+    ToggleRandom,
+    ToggleConsume,
+    ToggleSingle,
 }
