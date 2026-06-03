@@ -71,6 +71,10 @@ impl<'a> CassetteWidget<'a> {
 
 impl Widget for CassetteWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.width < WIDTH || area.height < HEIGHT {
+            return;
+        }
+
         let x = area.left();
         let y = area.top();
 

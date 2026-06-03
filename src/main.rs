@@ -66,8 +66,10 @@ impl App {
                     }
 
                     if let Ok(Some(song)) = client.currentsong() {
-                        fresh_data.title = song.title.unwrap();
-                        fresh_data.artist = song.artist.unwrap();
+                        fresh_data.title =
+                            song.title.unwrap_or_else(|| "Untitled Title".to_string());
+                        fresh_data.artist =
+                            song.artist.unwrap_or_else(|| "Untitled Title".to_string());
                     }
                 }
 
