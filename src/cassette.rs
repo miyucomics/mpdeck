@@ -159,7 +159,7 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
         ]),
         StatusLineMode::Nothing => Line::from(Span::styled("● READY", Color::Green)),
         StatusLineMode::ShowVolume => {
-            let bar = render_progress_bar(data.volume, data.volume_max, 10);
+            let bar = render_progress_bar(data.volume, 100, 10);
             let text = format!("[{bar}]");
             Line::from(Span::styled(text, Color::Green))
         }

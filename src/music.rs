@@ -7,10 +7,10 @@ pub struct MpdData {
     pub artist: String,
     pub playing: bool,
     pub show_volume: bool,
+
     pub current_ms: u32,
     pub duration_ms: u32,
     pub volume: u8,
-    pub volume_max: u8,
     pub shuffled: bool,
 }
 
@@ -24,7 +24,6 @@ impl MpdData {
             current_ms: 87000,
             duration_ms: 232_000,
             volume: 70,
-            volume_max: 100,
             shuffled: true,
         }
     }

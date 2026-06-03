@@ -65,6 +65,13 @@ impl App {
                         fresh_data.current_ms = elapsed.as_millis() as u32;
                     }
 
+                    if let Some(duration) = status.duration {
+                        fresh_data.duration_ms = duration.as_millis() as u32;
+                    }
+
+                    fresh_data.shuffled = status.random;
+                    fresh_data.volume = status.volume.cast_unsigned();
+
                     if let Ok(Some(song)) = client.currentsong() {
                         fresh_data.title =
                             song.title.unwrap_or_else(|| "Untitled Title".to_string());
