@@ -2,7 +2,7 @@
 #![allow(clippy::cast_possible_truncation)]
 
 use crate::{
-    music::MpdData,
+    mpd_worker::MpdData,
     utils::{format_duration, render_centered_text, render_progress_bar, render_stretchable_bar},
 };
 use ratatui::{

@@ -2,20 +2,18 @@
 #![allow(clippy::cast_possible_truncation)]
 
 mod cassette;
-mod music;
+mod mpd_worker;
 mod utils;
 
 use crate::{
     cassette::{CassetteWidget, REEL_FRAMES},
-    music::{MpdCommand, MpdData},
+    mpd_worker::{MpdCommand, MpdData, construct_worker_thread},
 };
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
-use mpd::Client;
 use ratatui::{DefaultTerminal, layout::Constraint};
 use std::{
     io::Error,
-    sync::mpsc::{self, Receiver, Sender},
-    thread,
+    sync::mpsc::{Receiver, Sender},
     time::{Duration, Instant},
 };
 
@@ -36,62 +34,7 @@ pub struct App {
 
 impl App {
     fn new() -> (Self, Receiver<MpdData>) {
-        let (data_tx, data_rx) = mpsc::channel();
-        let (command_tx, command_rx) = mpsc::channel();
-
-        thread::spawn(move || {
-            let mut client = Client::connect("127.0.0.1:6600").unwrap();
-
-            loop {
-                if let Ok(status) = client.status() {
-                    while let Ok(command) = command_rx.try_recv() {
-                        let _ = match command {
-                            MpdCommand::TogglePause => client.toggle_pause(),
-                            MpdCommand::PreviousTrack => client.prev(),
-                            MpdCommand::NextTrack => client.next(),
-                            MpdCommand::ToggleRepeat => client.repeat(!status.repeat),
-                            MpdCommand::ToggleRandom => client.random(!status.random),
-                            MpdCommand::ToggleConsume => client.consume(!status.consume),
-                            MpdCommand::ToggleSingle => client.single(!status.single),
-                        };
-                    }
-                }
-
-                let mut fresh_data = MpdData::new();
-
-                if let Ok(status) = client.status() {
-                    fresh_data.playing = status.state == mpd::State::Play;
-
-                    if let Some(elapsed) = status.elapsed {
-                        fresh_data.current_ms = elapsed.as_millis() as u32;
-                    }
-
-                    if let Some(duration) = status.duration {
-                        fresh_data.duration_ms = duration.as_millis() as u32;
-                    }
-
-                    fresh_data.volume = status.volume.cast_unsigned();
-
-                    fresh_data.repeat = status.repeat;
-                    fresh_data.random = status.random;
-                    fresh_data.consume = status.consume;
-                    fresh_data.single = status.single;
-
-                    if let Ok(Some(song)) = client.currentsong() {
-                        fresh_data.title =
-                            song.title.unwrap_or_else(|| "Untitled Title".to_string());
-                        fresh_data.artist =
-                            song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
-                    }
-                }
-
-                if data_tx.send(fresh_data).is_err() {
-                    break;
-                }
-
-                thread::sleep(Duration::from_millis(200));
-            }
-        });
+        let (command_tx, data_rx) = construct_worker_thread();
 
         let app = Self {
             frame_number: 0,
@@ -131,14 +74,10 @@ impl App {
             }
             KeyCode::Char('j') => {
                 let _ = self.command_tx.send(MpdCommand::NextTrack);
-                self.mpd_data.title = "Loading...".to_string();
-                self.mpd_data.artist = "Loading...".to_string();
             }
             KeyCode::Char('k') => {
                 let _ = self.command_tx.send(MpdCommand::PreviousTrack);
-                self.mpd_data.artist = "Loading...".to_string();
             }
-
             KeyCode::Char('z') => {
                 let _ = self.command_tx.send(MpdCommand::ToggleRepeat);
             }
