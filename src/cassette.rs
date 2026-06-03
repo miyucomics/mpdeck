@@ -38,7 +38,6 @@ pub const REEL_FRAMES: [[&str; 5]; 4] = [
 
 pub enum StatusLineMode {
     Playing,
-    PlayingShuffled,
     Nothing,
     ShowVolume,
 }
@@ -55,8 +54,6 @@ impl<'a> CassetteWidget<'a> {
             StatusLineMode::ShowVolume
         } else if !mpd_data.playing && mpd_data.current_ms == 0 {
             StatusLineMode::Nothing
-        } else if mpd_data.shuffled {
-            StatusLineMode::PlayingShuffled
         } else {
             StatusLineMode::Playing
         };
@@ -119,9 +116,7 @@ fn render_labels(buf: &mut Buffer, x: u16, y: u16, title: &str, artist: &str) {
         2,
     );
 
-    let subtitle_style = Color::DarkGray;
-    render_centered_text(buf, Line::from(artist).style(subtitle_style), x, y, 3);
-    render_centered_text(buf, Line::from("mpdeck").style(subtitle_style), x, y, 10);
+    render_centered_text(buf, Line::from(artist).style(Color::DarkGray), x, y, 3);
 }
 
 fn render_spokes(buf: &mut Buffer, x: u16, y: u16, frame_number: usize) {
@@ -152,11 +147,6 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
 
     let text = match mode {
         StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green)),
-        StatusLineMode::PlayingShuffled => Line::from(vec![
-            Span::styled(">< ", Color::Yellow),
-            Span::styled(time_information, Color::Green),
-            Span::styled("   ", Color::Yellow),
-        ]),
         StatusLineMode::Nothing => Line::from(Span::styled("● READY", Color::Green)),
         StatusLineMode::ShowVolume => {
             let bar = render_progress_bar(data.volume, 100, 10);
@@ -166,4 +156,26 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
     };
 
     render_centered_text(buf, text.style(Style::new().bold()), x, y, 9);
+
+    let mut statuses = vec![];
+    if data.repeat {
+        statuses.push("REPEAT");
+    }
+    if data.random {
+        statuses.push("RANDOM");
+    }
+    if data.consume {
+        statuses.push("CONSUME");
+    }
+    if data.single {
+        statuses.push("SINGLE");
+    }
+
+    render_centered_text(
+        buf,
+        Line::from(statuses.join(" | ")).style(Color::DarkGray),
+        x,
+        y,
+        10,
+    );
 }

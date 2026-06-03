@@ -69,14 +69,18 @@ impl App {
                         fresh_data.duration_ms = duration.as_millis() as u32;
                     }
 
-                    fresh_data.shuffled = status.random;
                     fresh_data.volume = status.volume.cast_unsigned();
+
+                    fresh_data.repeat = status.repeat;
+                    fresh_data.random = status.random;
+                    fresh_data.consume = status.consume;
+                    fresh_data.single = status.single;
 
                     if let Ok(Some(song)) = client.currentsong() {
                         fresh_data.title =
                             song.title.unwrap_or_else(|| "Untitled Title".to_string());
                         fresh_data.artist =
-                            song.artist.unwrap_or_else(|| "Untitled Title".to_string());
+                            song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
                     }
                 }
 

@@ -11,7 +11,11 @@ pub struct MpdData {
     pub current_ms: u32,
     pub duration_ms: u32,
     pub volume: u8,
-    pub shuffled: bool,
+
+    pub repeat: bool,
+    pub random: bool,
+    pub consume: bool,
+    pub single: bool,
 }
 
 impl MpdData {
@@ -21,10 +25,15 @@ impl MpdData {
             artist: String::new(),
             playing: true,
             show_volume: false,
+
             current_ms: 87000,
             duration_ms: 232_000,
             volume: 70,
-            shuffled: true,
+
+            random: false,
+            repeat: false,
+            consume: false,
+            single: false,
         }
     }
 }
