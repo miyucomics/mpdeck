@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(clippy::cast_possible_truncation)]
 
 use crate::{
     music::MpdData,
@@ -122,7 +123,7 @@ fn render_labels(buf: &mut Buffer, x: u16, y: u16, title: &str, artist: &str) {
 fn render_spokes(buf: &mut Buffer, x: u16, y: u16, frame_number: usize) {
     let style = Style::default().fg(Color::LightMagenta);
     for (i, line) in REEL_FRAMES[frame_number].iter().enumerate() {
-        let dy = y + 4 + u16::try_from(i).unwrap();
+        let dy = y + 4 + i as u16;
         buf.set_string(x + 4, dy, line, style);
         buf.set_string(x + 35, dy, line, style);
     }

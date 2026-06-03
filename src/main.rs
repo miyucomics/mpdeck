@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(clippy::cast_possible_truncation)]
 
 mod cassette;
 mod music;
@@ -6,13 +7,15 @@ mod utils;
 
 use crate::{
     cassette::{CassetteWidget, REEL_FRAMES},
-    music::MpdData,
+    music::{MpdCommand, MpdData},
 };
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use mpd::Client;
 use ratatui::{DefaultTerminal, layout::Constraint};
 use std::{
     io::Error,
+    sync::mpsc::{self, Receiver, Sender},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -22,26 +25,65 @@ fn main() -> Result<(), Error> {
 }
 
 pub struct App {
-    client: Client,
     frame_number: u8,
     mpd_data: MpdData,
     tick_rate: Duration,
     last_tick: Instant,
     accumulated_time: Duration,
     should_quit: bool,
+    command_tx: Sender<MpdCommand>,
 }
 
 impl App {
-    fn new() -> Self {
-        Self {
-            client: Client::connect("127.0.0.1:6600").unwrap(),
+    fn new() -> (Self, Receiver<MpdData>) {
+        let (data_tx, data_rx) = mpsc::channel();
+        let (command_tx, command_rx) = mpsc::channel();
+
+        thread::spawn(move || {
+            let mut client = Client::connect("127.0.0.1:6600").unwrap();
+
+            loop {
+                while let Ok(command) = command_rx.try_recv() {
+                    match command {
+                        MpdCommand::TogglePause => {
+                            let _ = client.toggle_pause();
+                        }
+                    }
+                }
+
+                let mut fresh_data = MpdData::new();
+                if let Ok(status) = client.status() {
+                    fresh_data.playing = status.state == mpd::State::Play;
+
+                    if let Some(elapsed) = status.elapsed {
+                        fresh_data.current_ms = elapsed.as_millis() as u32;
+                    }
+
+                    if let Ok(Some(song)) = client.currentsong() {
+                        fresh_data.title = song.title.unwrap();
+                        fresh_data.artist = song.artist.unwrap();
+                    }
+                }
+
+                if data_tx.send(fresh_data).is_err() {
+                    break;
+                }
+
+                thread::sleep(Duration::from_millis(200));
+            }
+        });
+
+        let app = Self {
             frame_number: 0,
             mpd_data: MpdData::new(),
             tick_rate: Duration::from_millis(150),
             last_tick: Instant::now(),
             accumulated_time: Duration::from_secs(0),
             should_quit: false,
-        }
+            command_tx,
+        };
+
+        (app, data_rx)
     }
 
     fn tick(&mut self) {
@@ -59,33 +101,27 @@ impl App {
             }
             self.accumulated_time -= self.tick_rate;
         }
-
-        if let Ok(status) = self.client.status() {
-            self.mpd_data.playing = status.state == mpd::State::Play;
-            if let Some(elapsed) = status.elapsed {
-                self.mpd_data.current_ms = i32::try_from(elapsed.as_millis()).unwrap();
-            }
-
-            if let Ok(Some(song)) = self.client.currentsong() {
-                self.mpd_data.title = song.title.unwrap();
-                self.mpd_data.artist = song.artist.unwrap();
-            }
-        }
     }
 
     fn handle_event(&mut self, key: &KeyEvent) {
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char(' ') => self.client.toggle_pause().unwrap(),
+            KeyCode::Char(' ') => {
+                let _ = self.command_tx.send(MpdCommand::TogglePause);
+            }
             _ => {}
         }
     }
 }
 
 fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
-    let mut app = App::new();
+    let (mut app, rx) = App::new();
 
     loop {
+        while let Ok(latest_mpd_data) = rx.try_recv() {
+            app.mpd_data = latest_mpd_data;
+        }
+
         app.tick();
 
         terminal.draw(|frame| {

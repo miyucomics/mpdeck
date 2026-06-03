@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(clippy::cast_possible_truncation)]
 
 #[derive(Debug, Default)]
 pub struct MpdData {
@@ -6,10 +7,10 @@ pub struct MpdData {
     pub artist: String,
     pub playing: bool,
     pub show_volume: bool,
-    pub current_ms: i32,
-    pub duration_ms: i32,
-    pub volume: i8,
-    pub volume_max: i8,
+    pub current_ms: u32,
+    pub duration_ms: u32,
+    pub volume: u8,
+    pub volume_max: u8,
     pub shuffled: bool,
 }
 
@@ -27,4 +28,8 @@ impl MpdData {
             shuffled: true,
         }
     }
+}
+
+pub enum MpdCommand {
+    TogglePause,
 }
