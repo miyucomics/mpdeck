@@ -32,4 +32,6 @@ impl MpdData {
 
 pub enum MpdCommand {
     TogglePause,
+    PreviousTrack,
+    NextTrack,
 }

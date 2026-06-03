@@ -48,6 +48,12 @@ impl App {
                         MpdCommand::TogglePause => {
                             let _ = client.toggle_pause();
                         }
+                        MpdCommand::PreviousTrack => {
+                            let _ = client.prev();
+                        }
+                        MpdCommand::NextTrack => {
+                            let _ = client.next();
+                        }
                     }
                 }
 
@@ -108,6 +114,12 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char(' ') => {
                 let _ = self.command_tx.send(MpdCommand::TogglePause);
+            }
+            KeyCode::Char('j') => {
+                let _ = self.command_tx.send(MpdCommand::NextTrack);
+            }
+            KeyCode::Char('k') => {
+                let _ = self.command_tx.send(MpdCommand::PreviousTrack);
             }
             _ => {}
         }
