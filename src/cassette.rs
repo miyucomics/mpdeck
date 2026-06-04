@@ -1,7 +1,10 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::cast_possible_truncation)]
 
+use std::time::{Duration, Instant};
+
 use crate::{
+    App,
     mpd_worker::MpdData,
     utils::{format_duration, render_centered_text, render_progress_bar, render_stretchable_bar},
 };
@@ -48,13 +51,21 @@ pub struct CassetteWidget<'a> {
 }
 
 impl<'a> CassetteWidget<'a> {
-    pub fn new(mpd_data: &'a MpdData, current_frame: usize) -> Self {
-        let mode = StatusLineMode::Playing;
+    pub fn new(app: &'a App) -> Self {
+        let mode = if let Some(change) = app.last_volume_change {
+            if Instant::now().duration_since(change) < Duration::from_secs(1) {
+                StatusLineMode::ShowVolume
+            } else {
+                StatusLineMode::Playing
+            }
+        } else {
+            StatusLineMode::Playing
+        };
 
         Self {
-            current_frame,
+            current_frame: app.frame_number as usize,
             status_line_mode: mode,
-            mpd_data,
+            mpd_data: &app.mpd_data,
         }
     }
 }
@@ -145,7 +156,7 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
     let text = match mode {
         StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green).bold()),
         StatusLineMode::ShowVolume => {
-            let bar = render_progress_bar(data.volume, 100, 10);
+            let bar = render_progress_bar(data.volume, 100, 20);
             let text = format!("[{bar}]");
             Line::from(Span::styled(text, Color::Green))
         }
@@ -173,14 +184,9 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
 
     if status_string.is_empty() {
         status_string.push_str("CLEAR");
-        render_centered_text(buf, Line::from("CLEAR").style(Color::DarkGray), x, y + 10);
+        render_centered_text(buf, Line::from("CLEAR").style(Color::Gray), x, y + 10);
         return;
     }
 
-    render_centered_text(
-        buf,
-        Line::from(status_string).style(Color::Green),
-        x,
-        y + 10,
-    );
+    render_centered_text(buf, Line::from(status_string).style(Color::Red), x, y + 10);
 }

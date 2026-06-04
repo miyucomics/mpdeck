@@ -29,6 +29,7 @@ pub struct App {
     last_tick: Instant,
     accumulated_time: Duration,
     should_quit: bool,
+    last_volume_change: Option<Instant>,
     command_tx: Sender<MpdCommand>,
 }
 
@@ -43,6 +44,7 @@ impl App {
             last_tick: Instant::now(),
             accumulated_time: Duration::from_secs(0),
             should_quit: false,
+            last_volume_change: None,
             command_tx,
         };
 
@@ -96,6 +98,14 @@ impl App {
             KeyCode::Char('v') => {
                 let _ = self.command_tx.send(MpdCommand::ToggleSingle);
             }
+            KeyCode::Char('u') => {
+                let _ = self.command_tx.send(MpdCommand::IncreaseVolume);
+                self.last_volume_change = Some(Instant::now());
+            }
+            KeyCode::Char('i') => {
+                let _ = self.command_tx.send(MpdCommand::DecreaseVolume);
+                self.last_volume_change = Some(Instant::now());
+            }
             _ => {}
         }
     }
@@ -113,7 +123,7 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
 
         terminal.draw(|frame| {
             frame.render_widget(
-                CassetteWidget::new(&app.mpd_data, app.frame_number as usize),
+                CassetteWidget::new(&app),
                 frame.area().centered(
                     Constraint::Length(crate::cassette::WIDTH),
                     Constraint::Length(crate::cassette::HEIGHT),

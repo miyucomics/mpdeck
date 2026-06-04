@@ -4,6 +4,7 @@
 
 use mpd::{Client, Idle, Subsystem};
 use std::{
+    ops::{Add, Sub},
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
@@ -35,6 +36,8 @@ pub enum MpdCommand {
     ToggleRandom,
     ToggleConsume,
     ToggleSingle,
+    IncreaseVolume,
+    DecreaseVolume,
 }
 
 pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
@@ -54,6 +57,8 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
                     MpdCommand::ToggleRandom => client.random(!status.random),
                     MpdCommand::ToggleConsume => client.consume(!status.consume),
                     MpdCommand::ToggleSingle => client.single(!status.single),
+                    MpdCommand::IncreaseVolume => client.volume(status.volume.add(5).min(100)),
+                    MpdCommand::DecreaseVolume => client.volume(status.volume.sub(5).max(0)),
                 };
             }
         }
