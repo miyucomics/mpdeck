@@ -8,6 +8,9 @@ use std::{
     thread,
 };
 
+const RELEVANT_SUBSYSTEMS: &[Subsystem] =
+    &[Subsystem::Player, Subsystem::Mixer, Subsystem::Options];
+
 #[derive(Debug, Default)]
 pub struct MpdData {
     pub title: String,
@@ -38,38 +41,6 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
     let (data_tx, data_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
 
-    let create_sync_packet = |client: &mut Client| -> Option<MpdData> {
-        let status = client.status().ok()?;
-
-        let mut packet = MpdData {
-            title: "Untitled Title".to_string(),
-            artist: "Untitled Artist".to_string(),
-            playing: status.state == mpd::State::Play,
-            current_ms: 0,
-            duration_ms: 0,
-            volume: status.volume.cast_unsigned(),
-            repeat: status.repeat,
-            random: status.random,
-            consume: status.consume,
-            single: status.single,
-        };
-
-        if let Ok(Some(song)) = client.currentsong() {
-            packet.title = song.title.unwrap_or_else(|| "Untitled Title".to_string());
-            packet.artist = song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
-        }
-
-        if let Some(elapsed) = status.elapsed {
-            packet.current_ms = elapsed.as_millis() as u32;
-        }
-
-        if let Some(duration) = status.duration {
-            packet.duration_ms = duration.as_millis() as u32;
-        }
-
-        Some(packet)
-    };
-
     thread::spawn(move || {
         let mut client = Client::connect("127.0.0.1:6600").expect("Commander failed to connect.");
 
@@ -88,19 +59,49 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
         }
     });
 
-    let data_tx_clone = data_tx.clone();
     thread::spawn(move || {
+        let create_sync_packet = |client: &mut Client| -> Option<MpdData> {
+            let status = client.status().ok()?;
+
+            let mut packet = MpdData {
+                title: "Untitled Title".to_string(),
+                artist: "Untitled Artist".to_string(),
+                playing: status.state == mpd::State::Play,
+                current_ms: 0,
+                duration_ms: 0,
+                volume: status.volume.cast_unsigned(),
+                repeat: status.repeat,
+                random: status.random,
+                consume: status.consume,
+                single: status.single,
+            };
+
+            if let Ok(Some(song)) = client.currentsong() {
+                packet.title = song.title.unwrap_or_else(|| "Untitled Title".to_string());
+                packet.artist = song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
+            }
+
+            if let Some(elapsed) = status.elapsed {
+                packet.current_ms = elapsed.as_millis() as u32;
+            }
+
+            if let Some(duration) = status.duration {
+                packet.duration_ms = duration.as_millis() as u32;
+            }
+
+            Some(packet)
+        };
+
         let mut client = Client::connect("127.0.0.1:6600").expect("Watcher failed to connect.");
         if let Some(initial_data) = create_sync_packet(&mut client) {
-            let _ = data_tx_clone.send(initial_data);
+            let _ = data_tx.send(initial_data);
         }
 
         loop {
-            if let Ok(_events) =
-                client.wait(&[Subsystem::Player, Subsystem::Mixer, Subsystem::Options])
-                && let Some(fresh_data) = create_sync_packet(&mut client)
+            if let Ok(_events) = client.wait(RELEVANT_SUBSYSTEMS)
+                && let Some(data) = create_sync_packet(&mut client)
             {
-                if data_tx_clone.send(fresh_data).is_err() {
+                if data_tx.send(data).is_err() {
                     break;
                 }
             } else {

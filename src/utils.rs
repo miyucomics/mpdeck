@@ -2,6 +2,7 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
 
+use crate::cassette::WIDTH;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Rect},
@@ -9,8 +10,6 @@ use ratatui::{
     text::Line,
     widgets::{Paragraph, Widget},
 };
-
-use crate::cassette::WIDTH;
 
 pub fn render_stretchable_bar(
     buf: &mut Buffer,
