@@ -11,8 +11,8 @@ use crate::{
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style, Stylize},
-    text::{Line, Span},
+    style::{Color, Style},
+    text::Line,
     widgets::Widget,
 };
 
@@ -48,6 +48,10 @@ pub struct CassetteWidget<'a> {
     pub current_frame: usize,
     pub status_line_mode: StatusLineMode,
     pub mpd_data: &'a MpdData,
+
+    pub frame: Style,
+    pub background: Style,
+    pub text: Style,
 }
 
 impl<'a> CassetteWidget<'a> {
@@ -66,6 +70,10 @@ impl<'a> CassetteWidget<'a> {
             current_frame: app.frame_number as usize,
             status_line_mode: mode,
             mpd_data: &app.mpd_data,
+
+            frame: Style::from(Color::from_u32(0x00_f3_8b_a8_u32)),
+            background: Style::from(Color::from_u32(0x00_eb_a0_ac_u32)),
+            text: Style::from(Color::from_u32(0x00_f2_cd_cd_u32)),
         }
     }
 }
@@ -79,16 +87,22 @@ impl Widget for CassetteWidget<'_> {
         let x = area.left();
         let y = area.top();
 
-        render_frame(buf, x, y);
-        render_labels(buf, x, y, &self.mpd_data.title, &self.mpd_data.artist);
-        render_spokes(buf, x, y, self.current_frame);
-        render_window(buf, x, y);
-        render_status(buf, x, y, &self.status_line_mode, self.mpd_data);
+        render_frame(buf, self.frame, self.background, x, y);
+        render_labels(
+            buf,
+            self.text,
+            x,
+            y,
+            &self.mpd_data.title,
+            &self.mpd_data.artist,
+        );
+        render_spokes(buf, self.background, x, y, self.current_frame);
+        render_window(buf, self.background, x, y);
+        render_status(buf, self.text, x, y, &self.status_line_mode, self.mpd_data);
     }
 }
 
-fn render_frame(buf: &mut Buffer, x: u16, y: u16) {
-    let style = Style::new().fg(Color::Cyan);
+fn render_frame(buf: &mut Buffer, style: Style, dim_style: Style, x: u16, y: u16) {
     render_stretchable_bar(buf, x, y, "╭─", "─╮", "═", style);
     render_stretchable_bar(buf, x, y + 1, "│┈", "┈│", "┈", style);
 
@@ -99,36 +113,18 @@ fn render_frame(buf: &mut Buffer, x: u16, y: u16) {
     render_stretchable_bar(buf, x, y + HEIGHT - 2, "│─", "─│", "─", style);
     render_stretchable_bar(buf, x, y + HEIGHT - 1, "╰─", "─╯", "═", style);
 
-    let screw_style = Color::White;
     for &dx in &[2, WIDTH - 3] {
-        buf.set_string(x + dx, y + 1, "x", screw_style);
-        buf.set_string(x + dx, y + 10, "x", screw_style);
+        buf.set_string(x + dx, y + 1, "x", dim_style);
+        buf.set_string(x + dx, y + 10, "x", dim_style);
     }
 }
 
-fn render_labels(buf: &mut Buffer, x: u16, y: u16, title: &str, artist: &str) {
-    render_centered_text(
-        buf,
-        Line::from(vec![
-            Span::styled(" ★ ", Color::Yellow),
-            Span::styled(title, Color::Magenta),
-            Span::styled(" ★ ", Color::Yellow),
-        ])
-        .style(Style::default().bold()),
-        x,
-        y + 2,
-    );
-
-    render_centered_text(
-        buf,
-        Line::from(artist).style(Style::new().red().italic()),
-        x,
-        y + 3,
-    );
+fn render_labels(buf: &mut Buffer, style: Style, x: u16, y: u16, title: &str, artist: &str) {
+    render_centered_text(buf, Line::from(title).style(style.bold()), x, y + 2);
+    render_centered_text(buf, Line::from(artist).style(style.italic()), x, y + 3);
 }
 
-fn render_spokes(buf: &mut Buffer, x: u16, y: u16, frame_number: usize) {
-    let style = Style::default().fg(Color::LightMagenta);
+fn render_spokes(buf: &mut Buffer, style: Style, x: u16, y: u16, frame_number: usize) {
     for (i, line) in REEL_FRAMES[frame_number].iter().enumerate() {
         let dy = y + 4 + i as u16;
         buf.set_string(x + 4, dy, line, style);
@@ -136,17 +132,24 @@ fn render_spokes(buf: &mut Buffer, x: u16, y: u16, frame_number: usize) {
     }
 }
 
-fn render_window(buf: &mut Buffer, x: u16, y: u16) {
+fn render_window(buf: &mut Buffer, style: Style, x: u16, y: u16) {
     for (i, line) in WINDOW_LINES.iter().enumerate() {
-        buf.set_string(x + 14, y + 4 + i as u16, *line, Color::Cyan);
+        buf.set_string(x + 14, y + 4 + i as u16, *line, style);
     }
 
     for (i, line) in TAPE_LINES.iter().enumerate() {
-        buf.set_string(x + 17, y + 5 + i as u16, *line, Color::Yellow);
+        buf.set_string(x + 17, y + 5 + i as u16, *line, style);
     }
 }
 
-fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: &MpdData) {
+fn render_status(
+    buf: &mut Buffer,
+    style: Style,
+    x: u16,
+    y: u16,
+    mode: &StatusLineMode,
+    data: &MpdData,
+) {
     let time_information = format!(
         "{}/{}",
         format_duration(data.current_ms),
@@ -154,15 +157,15 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
     );
 
     let text = match mode {
-        StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green).bold()),
+        StatusLineMode::Playing => Line::from(time_information),
         StatusLineMode::ShowVolume => {
             let bar = render_progress_bar(data.volume, 100, 20);
             let text = format!("[{bar}]");
-            Line::from(Span::styled(text, Color::Green))
+            Line::from(text)
         }
     };
 
-    render_centered_text(buf, text.style(Style::new().bold()), x, y + 9);
+    render_centered_text(buf, text.style(style.bold()), x, y + 9);
 
     let mut status_string = String::new();
 
@@ -184,9 +187,9 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
 
     if status_string.is_empty() {
         status_string.push_str("CLEAR");
-        render_centered_text(buf, Line::from("CLEAR").style(Color::Gray), x, y + 10);
+        render_centered_text(buf, Line::from("CLEAR").style(style), x, y + 10);
         return;
     }
 
-    render_centered_text(buf, Line::from(status_string).style(Color::Red), x, y + 10);
+    render_centered_text(buf, Line::from(status_string).style(style), x, y + 10);
 }
