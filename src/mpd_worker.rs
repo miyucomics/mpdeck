@@ -48,6 +48,14 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
         let mut client = Client::connect("127.0.0.1:6600").expect("Commander failed to connect.");
 
         while let Ok(command) = command_rx.recv() {
+            if client.status().is_err() {
+                if let Ok(new_client) = Client::connect("127.0.0.1:6600") {
+                    client = new_client;
+                } else {
+                    continue;
+                }
+            }
+
             if let Ok(status) = client.status() {
                 let _ = match command {
                     MpdCommand::TogglePause => client.toggle_pause(),
