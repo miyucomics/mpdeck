@@ -2,13 +2,11 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::struct_excessive_bools)]
 
+use mpd::{Client, Idle, Subsystem};
 use std::{
-    sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
+    sync::mpsc::{self, Receiver, Sender},
     thread,
-    time::Duration,
 };
-
-use mpd::{Client, Status};
 
 #[derive(Debug, Default)]
 pub struct MpdData {
@@ -40,81 +38,73 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
     let (data_tx, data_rx) = mpsc::channel();
     let (command_tx, command_rx) = mpsc::channel();
 
+    let create_sync_packet = |client: &mut Client| -> Option<MpdData> {
+        let status = client.status().ok()?;
+
+        let mut packet = MpdData {
+            title: "Untitled Title".to_string(),
+            artist: "Untitled Artist".to_string(),
+            playing: status.state == mpd::State::Play,
+            current_ms: 0,
+            duration_ms: 0,
+            volume: status.volume.cast_unsigned(),
+            repeat: status.repeat,
+            random: status.random,
+            consume: status.consume,
+            single: status.single,
+        };
+
+        if let Ok(Some(song)) = client.currentsong() {
+            packet.title = song.title.unwrap_or_else(|| "Untitled Title".to_string());
+            packet.artist = song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
+        }
+
+        if let Some(elapsed) = status.elapsed {
+            packet.current_ms = elapsed.as_millis() as u32;
+        }
+
+        if let Some(duration) = status.duration {
+            packet.duration_ms = duration.as_millis() as u32;
+        }
+
+        Some(packet)
+    };
+
     thread::spawn(move || {
-        let mut client = Client::connect("127.0.0.1:6600").unwrap();
+        let mut client = Client::connect("127.0.0.1:6600").expect("Commander failed to connect.");
 
-        let process_command = |client: &mut Client, command: MpdCommand, status: &Status| {
-            let _ = match command {
-                MpdCommand::TogglePause => client.toggle_pause(),
-                MpdCommand::PreviousTrack => client.prev(),
-                MpdCommand::NextTrack => client.next(),
-                MpdCommand::ToggleRepeat => client.repeat(!status.repeat),
-                MpdCommand::ToggleRandom => client.random(!status.random),
-                MpdCommand::ToggleConsume => client.consume(!status.consume),
-                MpdCommand::ToggleSingle => client.single(!status.single),
-            };
-        };
-
-        let update_main_thread = |client: &mut Client| -> bool {
+        while let Ok(command) = command_rx.recv() {
             if let Ok(status) = client.status() {
-                let mut fresh_data = MpdData {
-                    title: "Untitled Title".to_string(),
-                    artist: "Untitled Artist".to_string(),
-                    playing: status.state == mpd::State::Play,
-                    current_ms: 0,
-                    duration_ms: 0,
-                    volume: status.volume.cast_unsigned(),
-                    repeat: status.repeat,
-                    random: status.random,
-                    consume: status.consume,
-                    single: status.single,
+                let _ = match command {
+                    MpdCommand::TogglePause => client.toggle_pause(),
+                    MpdCommand::PreviousTrack => client.prev(),
+                    MpdCommand::NextTrack => client.next(),
+                    MpdCommand::ToggleRepeat => client.repeat(!status.repeat),
+                    MpdCommand::ToggleRandom => client.random(!status.random),
+                    MpdCommand::ToggleConsume => client.consume(!status.consume),
+                    MpdCommand::ToggleSingle => client.single(!status.single),
                 };
-
-                if let Ok(Some(song)) = client.currentsong() {
-                    fresh_data.title = song.title.unwrap_or_else(|| "Untitled Title".to_string());
-                    fresh_data.artist =
-                        song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
-                }
-
-                if let Some(elapsed) = status.elapsed {
-                    fresh_data.current_ms = elapsed.as_millis() as u32;
-                }
-
-                if let Some(duration) = status.duration {
-                    fresh_data.duration_ms = duration.as_millis() as u32;
-                }
-
-                return data_tx.send(fresh_data).is_ok();
             }
-            true
-        };
+        }
+    });
 
-        if !update_main_thread(&mut client) {
-            return;
+    let data_tx_clone = data_tx.clone();
+    thread::spawn(move || {
+        let mut client = Client::connect("127.0.0.1:6600").expect("Watcher failed to connect.");
+        if let Some(initial_data) = create_sync_packet(&mut client) {
+            let _ = data_tx_clone.send(initial_data);
         }
 
         loop {
-            match command_rx.recv_timeout(Duration::from_millis(200)) {
-                Ok(command) => {
-                    if let Ok(status) = client.status() {
-                        process_command(&mut client, command, &status);
-                        while let Ok(buffered) = command_rx.try_recv() {
-                            process_command(&mut client, buffered, &status);
-                        }
-                    }
-
-                    if !update_main_thread(&mut client) {
-                        break;
-                    }
-                }
-                Err(RecvTimeoutError::Timeout) => {
-                    if !update_main_thread(&mut client) {
-                        break;
-                    }
-                }
-                Err(RecvTimeoutError::Disconnected) => {
+            if let Ok(_events) =
+                client.wait(&[Subsystem::Player, Subsystem::Mixer, Subsystem::Options])
+                && let Some(fresh_data) = create_sync_packet(&mut client)
+            {
+                if data_tx_clone.send(fresh_data).is_err() {
                     break;
                 }
+            } else {
+                break;
             }
         }
     });

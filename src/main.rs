@@ -55,14 +55,20 @@ impl App {
         self.last_tick = now;
 
         if self.mpd_data.playing {
-            self.accumulated_time += delta;
-        }
+            self.mpd_data.current_ms = self
+                .mpd_data
+                .current_ms
+                .saturating_add(delta.as_millis() as u32);
 
-        while self.accumulated_time >= self.tick_rate {
-            if self.mpd_data.playing {
-                self.frame_number = (self.frame_number + 1) % REEL_FRAMES.len() as u8;
+            if self.mpd_data.current_ms > self.mpd_data.duration_ms {
+                self.mpd_data.current_ms = self.mpd_data.duration_ms;
             }
-            self.accumulated_time -= self.tick_rate;
+
+            self.accumulated_time += delta;
+            while self.accumulated_time >= self.tick_rate {
+                self.frame_number = (self.frame_number + 1) % REEL_FRAMES.len() as u8;
+                self.accumulated_time -= self.tick_rate;
+            }
         }
     }
 
