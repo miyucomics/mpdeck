@@ -28,10 +28,10 @@ pub fn render_stretchable_bar(
     buf.set_string(x + WIDTH - 2, y, end, style);
 }
 
-pub fn render_centered_text(buf: &mut Buffer, line: Line, x: u16, y: u16, relative: u16) {
+pub fn render_centered_text(buf: &mut Buffer, line: Line, x: u16, y: u16) {
     Paragraph::new(line)
         .alignment(Alignment::Center)
-        .render(Rect::new(x, y + relative, WIDTH, 1), buf);
+        .render(Rect::new(x, y, WIDTH, 1), buf);
 }
 
 pub fn format_duration(ms: u32) -> String {

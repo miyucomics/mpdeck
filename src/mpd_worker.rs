@@ -1,5 +1,6 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::struct_excessive_bools)]
 
 use std::{
     sync::mpsc::{self, Receiver, Sender},
@@ -14,7 +15,6 @@ pub struct MpdData {
     pub title: String,
     pub artist: String,
     pub playing: bool,
-    pub show_volume: bool,
 
     pub current_ms: u32,
     pub duration_ms: u32,
@@ -24,26 +24,6 @@ pub struct MpdData {
     pub random: bool,
     pub consume: bool,
     pub single: bool,
-}
-
-impl MpdData {
-    pub fn new() -> MpdData {
-        MpdData {
-            title: String::new(),
-            artist: String::new(),
-            playing: true,
-            show_volume: false,
-
-            current_ms: 87000,
-            duration_ms: 232_000,
-            volume: 70,
-
-            random: false,
-            repeat: false,
-            consume: false,
-            single: false,
-        }
-    }
 }
 
 pub enum MpdCommand {
@@ -76,12 +56,25 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
                         MpdCommand::ToggleSingle => client.single(!status.single),
                     };
                 }
-            }
 
-            let mut fresh_data = MpdData::new();
+                let mut fresh_data = MpdData {
+                    title: "Untitled Title".to_string(),
+                    artist: "Untitled Artist".to_string(),
+                    playing: status.state == mpd::State::Play,
+                    current_ms: 0,
+                    duration_ms: 0,
+                    volume: status.volume.cast_unsigned(),
+                    repeat: status.repeat,
+                    random: status.random,
+                    consume: status.consume,
+                    single: status.single,
+                };
 
-            if let Ok(status) = client.status() {
-                fresh_data.playing = status.state == mpd::State::Play;
+                if let Ok(Some(song)) = client.currentsong() {
+                    fresh_data.title = song.title.unwrap_or_else(|| "Untitled Title".to_string());
+                    fresh_data.artist =
+                        song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
+                }
 
                 if let Some(elapsed) = status.elapsed {
                     fresh_data.current_ms = elapsed.as_millis() as u32;
@@ -91,22 +84,9 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
                     fresh_data.duration_ms = duration.as_millis() as u32;
                 }
 
-                fresh_data.volume = status.volume.cast_unsigned();
-
-                fresh_data.repeat = status.repeat;
-                fresh_data.random = status.random;
-                fresh_data.consume = status.consume;
-                fresh_data.single = status.single;
-
-                if let Ok(Some(song)) = client.currentsong() {
-                    fresh_data.title = song.title.unwrap_or_else(|| "Untitled Title".to_string());
-                    fresh_data.artist =
-                        song.artist.unwrap_or_else(|| "Untitled Artist".to_string());
+                if data_tx.send(fresh_data).is_err() {
+                    break;
                 }
-            }
-
-            if data_tx.send(fresh_data).is_err() {
-                break;
             }
 
             thread::sleep(Duration::from_millis(200));

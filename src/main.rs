@@ -38,7 +38,7 @@ impl App {
 
         let app = Self {
             frame_number: 0,
-            mpd_data: MpdData::new(),
+            mpd_data: MpdData::default(),
             tick_rate: Duration::from_millis(200),
             last_tick: Instant::now(),
             accumulated_time: Duration::from_secs(0),

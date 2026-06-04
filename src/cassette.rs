@@ -38,7 +38,6 @@ pub const REEL_FRAMES: [[&str; 5]; 4] = [
 
 pub enum StatusLineMode {
     Playing,
-    Nothing,
     ShowVolume,
 }
 
@@ -50,13 +49,7 @@ pub struct CassetteWidget<'a> {
 
 impl<'a> CassetteWidget<'a> {
     pub fn new(mpd_data: &'a MpdData, current_frame: usize) -> Self {
-        let mode = if mpd_data.show_volume {
-            StatusLineMode::ShowVolume
-        } else if !mpd_data.playing && mpd_data.current_ms == 0 {
-            StatusLineMode::Nothing
-        } else {
-            StatusLineMode::Playing
-        };
+        let mode = StatusLineMode::Playing;
 
         Self {
             current_frame,
@@ -112,16 +105,14 @@ fn render_labels(buf: &mut Buffer, x: u16, y: u16, title: &str, artist: &str) {
         ])
         .style(Style::default().bold()),
         x,
-        y,
-        2,
+        y + 2,
     );
 
     render_centered_text(
         buf,
         Line::from(artist).style(Style::new().red().italic()),
         x,
-        y,
-        3,
+        y + 3,
     );
 }
 
@@ -153,7 +144,6 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
 
     let text = match mode {
         StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green).bold()),
-        StatusLineMode::Nothing => Line::from(Span::styled("● READY", Color::Green)),
         StatusLineMode::ShowVolume => {
             let bar = render_progress_bar(data.volume, 100, 10);
             let text = format!("[{bar}]");
@@ -161,7 +151,7 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
         }
     };
 
-    render_centered_text(buf, text.style(Style::new().bold()), x, y, 9);
+    render_centered_text(buf, text.style(Style::new().bold()), x, y + 9);
 
     let mut status_string = String::new();
 
@@ -183,8 +173,14 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: 
 
     if status_string.is_empty() {
         status_string.push_str("CLEAR");
+        render_centered_text(buf, Line::from("CLEAR").style(Color::DarkGray), x, y + 10);
+        return;
     }
 
-    let status_text = Line::from(status_string).style(Color::Green);
-    render_centered_text(buf, status_text, x, y, 10);
+    render_centered_text(
+        buf,
+        Line::from(status_string).style(Color::Green),
+        x,
+        y + 10,
+    );
 }
