@@ -3,12 +3,12 @@
 #![allow(clippy::struct_excessive_bools)]
 
 use std::{
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
     thread,
     time::Duration,
 };
 
-use mpd::Client;
+use mpd::{Client, Status};
 
 #[derive(Debug, Default)]
 pub struct MpdData {
@@ -43,20 +43,20 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
     thread::spawn(move || {
         let mut client = Client::connect("127.0.0.1:6600").unwrap();
 
-        loop {
-            if let Ok(status) = client.status() {
-                while let Ok(command) = command_rx.try_recv() {
-                    let _ = match command {
-                        MpdCommand::TogglePause => client.toggle_pause(),
-                        MpdCommand::PreviousTrack => client.prev(),
-                        MpdCommand::NextTrack => client.next(),
-                        MpdCommand::ToggleRepeat => client.repeat(!status.repeat),
-                        MpdCommand::ToggleRandom => client.random(!status.random),
-                        MpdCommand::ToggleConsume => client.consume(!status.consume),
-                        MpdCommand::ToggleSingle => client.single(!status.single),
-                    };
-                }
+        let process_command = |client: &mut Client, command: MpdCommand, status: &Status| {
+            let _ = match command {
+                MpdCommand::TogglePause => client.toggle_pause(),
+                MpdCommand::PreviousTrack => client.prev(),
+                MpdCommand::NextTrack => client.next(),
+                MpdCommand::ToggleRepeat => client.repeat(!status.repeat),
+                MpdCommand::ToggleRandom => client.random(!status.random),
+                MpdCommand::ToggleConsume => client.consume(!status.consume),
+                MpdCommand::ToggleSingle => client.single(!status.single),
+            };
+        };
 
+        let update_main_thread = |client: &mut Client| -> bool {
+            if let Ok(status) = client.status() {
                 let mut fresh_data = MpdData {
                     title: "Untitled Title".to_string(),
                     artist: "Untitled Artist".to_string(),
@@ -84,12 +84,38 @@ pub fn construct_worker_thread() -> (Sender<MpdCommand>, Receiver<MpdData>) {
                     fresh_data.duration_ms = duration.as_millis() as u32;
                 }
 
-                if data_tx.send(fresh_data).is_err() {
+                return data_tx.send(fresh_data).is_ok();
+            }
+            true
+        };
+
+        if !update_main_thread(&mut client) {
+            return;
+        }
+
+        loop {
+            match command_rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(command) => {
+                    if let Ok(status) = client.status() {
+                        process_command(&mut client, command, &status);
+                        while let Ok(buffered) = command_rx.try_recv() {
+                            process_command(&mut client, buffered, &status);
+                        }
+                    }
+
+                    if !update_main_thread(&mut client) {
+                        break;
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    if !update_main_thread(&mut client) {
+                        break;
+                    }
+                }
+                Err(RecvTimeoutError::Disconnected) => {
                     break;
                 }
             }
-
-            thread::sleep(Duration::from_millis(200));
         }
     });
 
