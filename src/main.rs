@@ -10,7 +10,11 @@ use crate::{
     mpd_worker::{MpdCommand, MpdData, construct_worker_thread},
 };
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
-use ratatui::{DefaultTerminal, layout::Constraint};
+use ratatui::{
+    DefaultTerminal,
+    layout::{Constraint, Layout},
+    widgets::{Block, BorderType},
+};
 use std::{
     io::Error,
     sync::mpsc::{Receiver, Sender},
@@ -31,6 +35,7 @@ pub struct App {
     should_quit: bool,
     last_volume_change: Option<Instant>,
     command_tx: Sender<MpdCommand>,
+    show_queue: bool,
 }
 
 impl App {
@@ -46,6 +51,7 @@ impl App {
             should_quit: false,
             last_volume_change: None,
             command_tx,
+            show_queue: false,
         };
 
         (app, data_rx)
@@ -77,6 +83,7 @@ impl App {
     fn handle_event(&mut self, key: &KeyEvent) {
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('m') => self.show_queue = !self.show_queue,
             KeyCode::Char(' ' | 'p') => {
                 let _ = self.command_tx.send(MpdCommand::TogglePause);
             }
@@ -114,6 +121,10 @@ impl App {
 fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
     let (mut app, rx) = App::new();
 
+    let cassette_width = crate::cassette::WIDTH;
+    let cassette_height = crate::cassette::HEIGHT;
+    let queue_width = crate::cassette::WIDTH;
+
     loop {
         while let Ok(latest_mpd_data) = rx.try_recv() {
             app.mpd_data = latest_mpd_data;
@@ -122,13 +133,38 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
         app.tick();
 
         terminal.draw(|frame| {
-            frame.render_widget(
-                CassetteWidget::new(&app),
-                frame.area().centered(
-                    Constraint::Length(crate::cassette::WIDTH),
-                    Constraint::Length(crate::cassette::HEIGHT),
-                ),
-            );
+            if app.show_queue {
+                let total_width = cassette_width + 1 + queue_width;
+
+                let centered_area = frame.area().centered(
+                    Constraint::Length(total_width),
+                    Constraint::Length(cassette_height),
+                );
+
+                let rects = Layout::horizontal([
+                    Constraint::Length(queue_width),
+                    Constraint::Length(1),
+                    Constraint::Length(cassette_width),
+                ])
+                .split(centered_area);
+
+                frame.render_widget(
+                    Block::bordered()
+                        .border_type(BorderType::Rounded)
+                        .title(" Queue "),
+                    rects[0],
+                );
+
+                frame.render_widget(CassetteWidget::new(&app), rects[2]);
+            } else {
+                frame.render_widget(
+                    CassetteWidget::new(&app),
+                    frame.area().centered(
+                        Constraint::Length(cassette_width),
+                        Constraint::Length(cassette_height),
+                    ),
+                );
+            }
         })?;
 
         if event::poll(Duration::from_millis(10))?
