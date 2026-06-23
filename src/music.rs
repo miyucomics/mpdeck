@@ -1,7 +1,9 @@
 #![warn(clippy::pedantic)]
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct MpdData {
+    pub title: String,
+    pub artist: String,
     pub playing: bool,
     pub show_volume: bool,
     pub current_ms: i32,
@@ -14,6 +16,8 @@ pub struct MpdData {
 impl MpdData {
     pub fn new() -> MpdData {
         MpdData {
+            title: String::new(),
+            artist: String::new(),
             playing: true,
             show_volume: false,
             current_ms: 87000,

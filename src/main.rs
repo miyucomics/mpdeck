@@ -5,7 +5,7 @@ mod music;
 mod utils;
 
 use crate::{
-    cassette::{CassetteWidget, CassetteWidgetState, StatusLineMode},
+    cassette::{CassetteWidget, REEL_FRAMES},
     music::MpdData,
 };
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
@@ -22,25 +22,21 @@ fn main() -> Result<(), Error> {
 }
 
 pub struct App {
-    pub client: Client,
-    pub cassette_state: CassetteWidgetState,
-    pub tick_rate: Duration,
-    pub last_tick: Instant,
-    pub accumulated_time: Duration,
-    pub should_quit: bool,
+    client: Client,
+    frame_number: u8,
+    mpd_data: MpdData,
+    tick_rate: Duration,
+    last_tick: Instant,
+    accumulated_time: Duration,
+    should_quit: bool,
 }
 
 impl App {
     fn new() -> Self {
         Self {
             client: Client::connect("127.0.0.1:6600").unwrap(),
-            cassette_state: CassetteWidgetState {
-                title: String::new(),
-                artist: String::new(),
-                current_frame: 0,
-                mode: StatusLineMode::Playing,
-                data: MpdData::new(),
-            },
+            frame_number: 0,
+            mpd_data: MpdData::new(),
             tick_rate: Duration::from_millis(150),
             last_tick: Instant::now(),
             accumulated_time: Duration::from_secs(0),
@@ -53,26 +49,26 @@ impl App {
         let delta = now.duration_since(self.last_tick);
         self.last_tick = now;
 
-        if self.cassette_state.data.playing {
+        if self.mpd_data.playing {
             self.accumulated_time += delta;
         }
 
         while self.accumulated_time >= self.tick_rate {
-            if self.cassette_state.data.playing {
-                self.cassette_state.next_frame();
+            if self.mpd_data.playing {
+                self.frame_number = (self.frame_number + 1) % REEL_FRAMES.len() as u8;
             }
             self.accumulated_time -= self.tick_rate;
         }
 
         if let Ok(status) = self.client.status() {
-            self.cassette_state.data.playing = status.state == mpd::State::Play;
+            self.mpd_data.playing = status.state == mpd::State::Play;
             if let Some(elapsed) = status.elapsed {
-                self.cassette_state.data.current_ms = i32::try_from(elapsed.as_millis()).unwrap();
+                self.mpd_data.current_ms = i32::try_from(elapsed.as_millis()).unwrap();
             }
 
             if let Ok(Some(song)) = self.client.currentsong() {
-                self.cassette_state.title = song.title.unwrap();
-                self.cassette_state.artist = song.artist.unwrap();
+                self.mpd_data.title = song.title.unwrap();
+                self.mpd_data.artist = song.artist.unwrap();
             }
         }
     }
@@ -94,9 +90,7 @@ fn app(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
 
         terminal.draw(|frame| {
             frame.render_widget(
-                CassetteWidget {
-                    state: &app.cassette_state,
-                },
+                CassetteWidget::new(&app.mpd_data, app.frame_number as usize),
                 frame.area().centered(
                     Constraint::Length(crate::cassette::WIDTH),
                     Constraint::Length(crate::cassette::HEIGHT),

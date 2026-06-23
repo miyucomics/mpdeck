@@ -28,7 +28,7 @@ const TAPE_LINES: [&str; 4] = [
     "╰──────────╯",
 ];
 
-const REEL_FRAMES: [[&str; 5]; 4] = [
+pub const REEL_FRAMES: [[&str; 5]; 4] = [
     [" .---. ", "/  |  \\", "|  o  |", "\\  |  /", " '---' "],
     [" .---. ", "/   / \\", "|  o  |", "\\ /   /", " '---' "],
     [" .---. ", "/     \\", "|--o--|", "\\     /", " '---' "],
@@ -42,22 +42,30 @@ pub enum StatusLineMode {
     ShowVolume,
 }
 
-pub struct CassetteWidgetState {
-    pub title: String,
-    pub artist: String,
-    pub current_frame: usize,
-    pub mode: StatusLineMode,
-    pub data: MpdData,
-}
-
-impl CassetteWidgetState {
-    pub fn next_frame(&mut self) {
-        self.current_frame = (self.current_frame + 1) % REEL_FRAMES.len();
-    }
-}
-
 pub struct CassetteWidget<'a> {
-    pub state: &'a CassetteWidgetState,
+    pub current_frame: usize,
+    pub status_line_mode: StatusLineMode,
+    pub mpd_data: &'a MpdData,
+}
+
+impl<'a> CassetteWidget<'a> {
+    pub fn new(mpd_data: &'a MpdData, current_frame: usize) -> Self {
+        let mode = if mpd_data.show_volume {
+            StatusLineMode::ShowVolume
+        } else if !mpd_data.playing && mpd_data.current_ms == 0 {
+            StatusLineMode::Nothing
+        } else if mpd_data.shuffled {
+            StatusLineMode::PlayingShuffled
+        } else {
+            StatusLineMode::Playing
+        };
+
+        Self {
+            current_frame,
+            status_line_mode: mode,
+            mpd_data,
+        }
+    }
 }
 
 impl Widget for CassetteWidget<'_> {
@@ -66,10 +74,10 @@ impl Widget for CassetteWidget<'_> {
         let y = area.top();
 
         render_frame(buf, x, y);
-        render_labels(buf, x, y, self.state);
-        render_spokes(buf, x, y, self.state.current_frame);
+        render_labels(buf, x, y, &self.mpd_data.title, &self.mpd_data.artist);
+        render_spokes(buf, x, y, self.current_frame);
         render_window(buf, x, y);
-        render_status(buf, x, y, self.state);
+        render_status(buf, x, y, &self.status_line_mode, self.mpd_data);
     }
 }
 
@@ -92,12 +100,12 @@ fn render_frame(buf: &mut Buffer, x: u16, y: u16) {
     }
 }
 
-fn render_labels(buf: &mut Buffer, x: u16, y: u16, state: &CassetteWidgetState) {
+fn render_labels(buf: &mut Buffer, x: u16, y: u16, title: &str, artist: &str) {
     render_centered_text(
         buf,
         Line::from(vec![
             Span::styled(" ★ ", Color::Yellow),
-            Span::styled(state.title.clone(), Color::Magenta),
+            Span::styled(title, Color::Magenta),
             Span::styled(" ★ ", Color::Yellow),
         ])
         .style(Style::default().bg(Color::Black).bold()),
@@ -107,13 +115,7 @@ fn render_labels(buf: &mut Buffer, x: u16, y: u16, state: &CassetteWidgetState) 
     );
 
     let subtitle_style = Color::DarkGray;
-    render_centered_text(
-        buf,
-        Line::from(state.artist.clone()).style(subtitle_style),
-        x,
-        y,
-        3,
-    );
+    render_centered_text(buf, Line::from(artist).style(subtitle_style), x, y, 3);
     render_centered_text(buf, Line::from("mpdeck").style(subtitle_style), x, y, 10);
 }
 
@@ -126,7 +128,6 @@ fn render_spokes(buf: &mut Buffer, x: u16, y: u16, frame_number: usize) {
     }
 }
 
-#[allow(clippy::cast_possible_truncation)]
 fn render_window(buf: &mut Buffer, x: u16, y: u16) {
     for (i, line) in WINDOW_LINES.iter().enumerate() {
         buf.set_string(x + 14, y + 4 + i as u16, *line, Color::Cyan);
@@ -137,14 +138,14 @@ fn render_window(buf: &mut Buffer, x: u16, y: u16) {
     }
 }
 
-fn render_status(buf: &mut Buffer, x: u16, y: u16, state: &CassetteWidgetState) {
+fn render_status(buf: &mut Buffer, x: u16, y: u16, mode: &StatusLineMode, data: &MpdData) {
     let time_information = format!(
         "{}/{}",
-        format_duration(state.data.current_ms),
-        format_duration(state.data.duration_ms)
+        format_duration(data.current_ms),
+        format_duration(data.duration_ms)
     );
 
-    let text = match state.mode {
+    let text = match mode {
         StatusLineMode::Playing => Line::from(Span::styled(time_information, Color::Green)),
         StatusLineMode::PlayingShuffled => Line::from(vec![
             Span::styled(">< ", Color::Yellow),
@@ -153,7 +154,7 @@ fn render_status(buf: &mut Buffer, x: u16, y: u16, state: &CassetteWidgetState) 
         ]),
         StatusLineMode::Nothing => Line::from(Span::styled("● READY", Color::Green)),
         StatusLineMode::ShowVolume => {
-            let bar = render_progress_bar(state.data.volume, state.data.volume_max, 10);
+            let bar = render_progress_bar(data.volume, data.volume_max, 10);
             let text = format!("[{bar}]");
             Line::from(Span::styled(text, Color::Green))
         }
